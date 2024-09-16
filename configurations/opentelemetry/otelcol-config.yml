@@ -1,0 +1,49 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: ${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_GRPC}
+      http:
+        endpoint: ${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_HTTP}
+        cors:
+          allowed_origins:
+            - "http://*"
+            - "https://*"
+
+
+exporters:
+  debug:
+  otlp:
+    endpoint: "jaeger:4317"
+    tls:
+      insecure: true
+  otlphttp/prometheus:
+    endpoint: "http://prometheus:9090/api/v1/otlp"
+    tls:
+      insecure: true
+
+
+processors:
+  batch:
+  transform:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          # could be removed when https://github.com/vercel/next.js/pull/64852 is fixed upstream
+          - replace_pattern(name, "\\?.*", "")
+          - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
+
+connectors:
+  spanmetrics:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform, batch]
+      exporters: [otlp]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/prometheus, debug]

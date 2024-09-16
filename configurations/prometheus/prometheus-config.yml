@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 5s       # Scraping every 2 seconds
+  evaluation_interval: 30s  # Rules are evaluated every 30 seconds
+
+# Storage configuration (make sure your Prometheus version supports this)
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+
+scrape_configs:
+  # Scrape OpenTelemetry Collector metrics
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets:
+          - 'otelcol:8888'
+
+  # Scrape Pythia FastAPI application metrics
+  - job_name: 'pythia_metrics'
+    metrics_path: '/metrics'  # Ensure /metrics is accessible
+    static_configs:
+      - targets:
+          - 'pythia-backend:8008'
