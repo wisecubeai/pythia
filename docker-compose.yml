@@ -53,7 +53,7 @@ services:
     command: [ "--config=/etc/otelcol-config.yml" ]
     user: 0:0
     volumes:
-      - ./configurations/opemtelemetry/otelcol-config.yml:/etc/otelcol-config.yml
+      - ./configurations/opentelemetry/otelcol-config.yml:/etc/otelcol-config.yml
     ports:
       - "${OTEL_COLLECTOR_PORT_GRPC}"
       - "${OTEL_COLLECTOR_PORT_HTTP}"
@@ -114,6 +114,14 @@ services:
     container_name: wisecube-pythia
     environment:
       - "OPENAI_API_KEY=${OPENAI_API_KEY}"
+      - "MODEL_BASE_URL=${MODEL_BASE_URL}"
     ports:
       - "8008:8008"
+    restart: always
+
+  pythia-model:
+    build: .
+    container_name: pythia-model
+    ports:
+      - 8080:8080
     restart: always
