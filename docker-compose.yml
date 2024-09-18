@@ -115,6 +115,7 @@ services:
     environment:
       - "OPENAI_API_KEY=${OPENAI_API_KEY}"
       - "MODEL_BASE_URL=${MODEL_BASE_URL}"
+      - "READ_INTERVAL=${READ_INTERVAL}"
     ports:
       - "8008:8008"
     restart: always
