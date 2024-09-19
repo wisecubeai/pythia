@@ -24,6 +24,20 @@ docker compose up --force-recreate --remove-orphans --detach
 
 ### Add the Pythia Trace collector to your app 
 
+#### Install pythia sdk
+
+# pythia-sdk
+
+## As a library
+You can install the project as a library from github
+```commandline
+pip install git+https://github.com/wisecubeai/pythia-sdk
+```
+or if you don't have the git configure use the token
+```
+pip install git+https://<GIT_TOKEN>@github.com/wisecubeai/pythia-sdk
+```
+
 ```python
 import os
 from fastapi import FastAPI
