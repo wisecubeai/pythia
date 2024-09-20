@@ -1,6 +1,9 @@
 
 # Pythia
 
+![Pythia AI Observability Architecture](pythia-architecture-diagram.png)
+
+
 ### Before you start 
 #### LLM Model
 ##### Default Model 
