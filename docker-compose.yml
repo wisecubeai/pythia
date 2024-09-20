@@ -116,6 +116,8 @@ services:
       - "OPENAI_API_KEY=${OPENAI_API_KEY}"
       - "MODEL_BASE_URL=${MODEL_BASE_URL}"
       - "READ_INTERVAL=${READ_INTERVAL}"
+      - "JAEGER_HOST=${JAEGER_SERVICE_HOST}"
+      - "JAEGER_PORT=${JAEGER_AGENT_PORT}"
     ports:
       - "8008:8008"
     restart: always
