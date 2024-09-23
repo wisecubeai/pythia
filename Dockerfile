@@ -1,59 +1,40 @@
-# Use debian trixie for gcc13
-FROM debian:trixie as builder
+#FROM python:3.10-slim-bullseye
+#
+#WORKDIR /app
+#COPY . /app
+#
+#RUN pip install --no-cache-dir virtualenv
+#RUN virtualenv /venv
+#ENV PATH="/venv/bin:$PATH"
+#RUN pip install Flask==2.3.2
+#RUN pip install gunicorn==21.2.0
+#
+#RUN pip install --no-cache-dir .
+#RUN pip install gevent
+#
+#EXPOSE 8080
+#ENV TIMEOUT=30
+#ENV NUM_WORKERS=4
+##CMD ["flask", "--app", "app.py", "run", "--host=0.0.0.0", "--port=8080", "--no-reload"]
+#CMD gunicorn --workers $NUM_WORKERS --timeout $TIMEOUT --bind 0.0.0.0:8080 --worker-class gevent app:app
 
-ARG MODEL_URL=TheBloke/Mistral-7B-v0.1-GGUF 
-ARG MODEL_FILE=mistral-7b-v0.1.Q4_K_M.gguf
+# Use the official Python image from the Docker Hub
+FROM python:3.10-slim
 
-# Set work directory
-WORKDIR /download
- 
-# Update and install dependencies
-RUN mkdir out && \
-    apt-get update && \
-    apt-get install -y curl git gcc make python3-pip
+# Set the working directory in the container
+WORKDIR /app
 
-RUN curl -L -o ./unzip https://cosmo.zip/pub/cosmos/bin/unzip && \
-    chmod 755 unzip && mv unzip /usr/local/bin 
+# Copy the requirements to the container
+COPY requirements.txt .
 
+# Install the required Python packages
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Huggingface hub and download model file
-RUN mkdir -p /download/model 
-RUN pip3 install huggingface_hub[cli] --break-system-packages 
-RUN huggingface-cli download $MODEL_URL $MODEL_FILE --local-dir /download/model
+# Copy the FastAPI application code to the container
+COPY . .
 
+# Expose port 8000
+EXPOSE 8008
 
-# Checkout llamafile codebase
-RUN git clone https://github.com/Mozilla-Ocho/llamafile.git
-
-# Build llamafile
-RUN cd llamafile && make -j8 LLAMA_DISABLE_LOGS=1; exit 0
-RUN cd llamafile && make install PREFIX=/download/out; exit 0
-
-
-# Create container
-FROM debian:stable as out
-
-
-# Create a non-root user
-RUN addgroup --gid 1000 user && \
-    adduser --uid 1000 --gid 1000 --disabled-password --gecos "" user
- 
-# Switch to user
-USER user
- 
-# Set working directory
-WORKDIR /usr/local
- 
-# Copy llamafile and man pages
-COPY --from=builder /download/out/bin ./bin
-COPY --from=builder /download/model/*.gguf /model
-
-
-# Expose 8080 port.
-EXPOSE 8080
- 
-# Set entrypoint.
-ENTRYPOINT ["/bin/sh", "/usr/local/bin/llamafile"]
- 
-# Set default command.
-CMD ["--server", "--nobrowser", "--host", "0.0.0.0", "-m", "/model"]
+# Command to run the FastAPI application using Uvicorn
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8008"]
