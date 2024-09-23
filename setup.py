@@ -7,7 +7,7 @@ with open('requirements.txt') as f:
     required = f.read().splitlines()
 
 setuptools.setup(
-    name="wisecube_pythia",
+    name="pythia",
     version="1.0.0",
     author="Wisecube.ai",
     author_email="info@wisecube.ai",
