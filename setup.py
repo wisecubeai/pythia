@@ -20,11 +20,11 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    install_requires=required,
     package_dir={"pythia": "pythia"},
     packages=setuptools.find_packages(where="."),
     extras_require={
-        'traces': ['openlit==1.22.0']
+        'traces': ['openlit==1.22.0'],
+        "pythia": required
     },
     python_requires=">=3.10",
 )
