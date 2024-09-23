@@ -6,7 +6,7 @@
 
 ### Before you start 
 #### LLM Model
-##### Default Model 
+##### Default Model Enpoint
 The Pythia Stack provide a default model as docker and to use it make sure to have this set in the `.env` file.
 
 ```
@@ -15,8 +15,35 @@ OPENAI_API_KEY=default
 MODEL_BASE_URL=http://pythia-model:8080/v1
 ```
 
-##### Custom Model
+##### Custom Model Enpoint
 To use a model that is compatible with OpenAi Client set the `OPENAI_API_KEY` and `MODEL_BASE_URL` as needed in the `.env` file.
+
+For example using OpenAi
+```bash
+OPENAI_API_KEY=sk-********
+MODEL_BASE_URL=https://api.openai.com/v1
+```
+
+#### Model Name
+If the model endpoint supports multiple models you can change the model name using the `MODEL_NAME` parameter in the `.env` file.
+
+```
+MODEL_NAME=gpt-4o
+```
+
+### Custum service Name
+If you want to change where and from were pythia writes and reads traces you can set the `JAEGER_SERVICE_NAME` in the .env file and also set the `service_name` for the Pythia traces to your value. The default value is `default`.
+
+```
+JAEGER_SERVICE_NAME=default
+```
+
+```python
+## Pythia Trace Collector with custom service name
+traces = PythiaTraces(endpoint="http://localhost:4318", service_name="test2")
+traces.init()
+```
+
 
 
 ### Run the docker compose 

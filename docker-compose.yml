@@ -56,7 +56,7 @@ services:
       - ./configurations/opentelemetry/otelcol-config.yml:/etc/otelcol-config.yml
     ports:
       - "${OTEL_COLLECTOR_PORT_GRPC}"
-      - "${OTEL_COLLECTOR_PORT_HTTP}"
+      - "${OTEL_COLLECTOR_PORT_HTTP}:${OTEL_COLLECTOR_PORT_HTTP}"
     depends_on:
       - jaeger
     logging: *logging
@@ -115,15 +115,17 @@ services:
     environment:
       - "OPENAI_API_KEY=${OPENAI_API_KEY}"
       - "MODEL_BASE_URL=${MODEL_BASE_URL}"
+      - "MODEL_NAME=${MODEL_NAME}"
       - "READ_INTERVAL=${READ_INTERVAL}"
       - "JAEGER_HOST=${JAEGER_SERVICE_HOST}"
       - "JAEGER_PORT=${JAEGER_AGENT_PORT}"
+      - "JAEGER_SERVICE_NAME=${JAEGER_SERVICE_NAME}"
     ports:
       - "8008:8008"
     restart: always
 
   pythia-model:
-    build: .
+    image: public.ecr.aws/u9o1b9m6/pythia-llama:latest
     container_name: pythia-model
     ports:
       - 8080:8080
