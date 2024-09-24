@@ -74,7 +74,7 @@ from fastapi import FastAPI
 from openai import OpenAI
 
 app = FastAPI()
-from pythia.traces.pythia_wrapper import PythiaTraces
+from traces.pythia_wrapper import PythiaTraces
 
 # take the correct port for the otl collector
 traces = PythiaTraces(endpoint="http://localhost:63714")

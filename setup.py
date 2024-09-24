@@ -23,9 +23,5 @@ setuptools.setup(
     install_requires=required,
     package_dir={"pythia": "pythia"},
     packages=setuptools.find_packages(where="."),
-    extras_require={
-        'traces': ['openlit==1.22.0']
-
-    },
     python_requires=">=3.10",
 )
