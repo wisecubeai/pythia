@@ -120,6 +120,7 @@ services:
       - "JAEGER_HOST=${JAEGER_SERVICE_HOST}"
       - "JAEGER_PORT=${JAEGER_AGENT_PORT}"
       - "JAEGER_SERVICE_NAME=${JAEGER_SERVICE_NAME}"
+      - "JAEGER_SERVICE_PORT=${JAEGER_SERVICE_PORT}"
     ports:
       - "8008:8008"
     restart: always
