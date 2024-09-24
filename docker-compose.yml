@@ -110,7 +110,7 @@ services:
       - default
 
   pythia-backend:
-    image: public.ecr.aws/u9o1b9m6/wisecube-pythia:latest
+    build: .
     container_name: wisecube-pythia
     environment:
       - "OPENAI_API_KEY=${OPENAI_API_KEY}"
