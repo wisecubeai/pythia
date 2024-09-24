@@ -10,6 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pythia.ai_hallucination import ask_pythia, search_qids, \
     entity_search, predicate_search
+from pythia.validator import ValidatorPool
+
 import logging
 from starlette_prometheus import PrometheusMiddleware, metrics
 from prometheus_client import Histogram
@@ -146,10 +148,12 @@ def get_model_metrics():
     system_message, user_prompt, completion = extract_prompt_and_completion(traces)
     if system_message is None or user_prompt is None or completion is None:
         return None
-    # print("Message {}".format(system_message))
-    # print("User Prompt {}".format(user_prompt))
-    # print("Completions {}".format(completion))
-    claim = ask_pythia(system_message, completion, user_prompt)
+
+    validators = ValidatorPool().enabled_validators
+    claim = ask_pythia(input_reference=system_message,
+                       input_response=completion,
+                       question=user_prompt,
+                       validators=validators)
     metrics = claim.get('metrics', {})
     trace_pythia_response(metrics)
     # print(metrics)

@@ -1,0 +1,28 @@
+---
+validators:
+  description: "Model Validators"
+  options:
+    - name: detect_pii
+      description: ""
+      enable: true
+    - name: detect_gibberish
+      description: ""
+      enable: false
+    - name: detect_toxicity
+      description: ""
+      enable: false
+    - name: detect_prompt_injection
+      description: ""
+      enable: false
+    - name: ban_substrings
+      description: ""
+      enable: false
+    - name: detect_secrets
+      description: ""
+      enable: false
+    - name: detect_relevance
+      description: ""
+      enable: false
+    - name: detect_factual_consistency
+      description: ""
+      enable: false
