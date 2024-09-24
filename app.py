@@ -153,7 +153,7 @@ def get_model_metrics():
     claim = ask_pythia(input_reference=system_message,
                        input_response=completion,
                        question=user_prompt,
-                       validators=validators)
+                       validators_list=validators)
     metrics = claim.get('metrics', {})
     trace_pythia_response(metrics)
     # print(metrics)

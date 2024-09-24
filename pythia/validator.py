@@ -5,7 +5,7 @@ import os
 def load_config():
     try:
         # for local test use default
-        config_file = os.getenv("CONFIG_FILE", default="../configurations/validators/config.yaml")
+        config_file = os.getenv("CONFIG_FILE", default="./configurations/validators/config.yaml")
         with open(config_file) as f:
             config = yaml.safe_load(f)
         print("load file {}".format(config_file))

@@ -4,10 +4,10 @@ validators:
   options:
     - name: detect_pii
       description: ""
-      enable: true
+      enable: false
     - name: detect_gibberish
       description: ""
-      enable: false
+      enable: true
     - name: detect_toxicity
       description: ""
       enable: false
