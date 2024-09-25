@@ -162,7 +162,7 @@ def call_validators(input_reference, input_response, question=None, validators_l
     validator_class = ValidatorCall()
 
     def call_validator(validator):
-        validator_name = validator['name']
+        validator_name = validator
         print("Execute Validator {}".format(validator_name))
         try:
             validator_data = call_method(
