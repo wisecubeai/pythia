@@ -4,25 +4,25 @@ validators:
   options:
     - name: detect_pii
       description: ""
-      enable: false
+      enabled: true
     - name: detect_gibberish
       description: ""
-      enable: true
+      enabled: true
     - name: detect_toxicity
       description: ""
-      enable: false
+      enabled: true
     - name: detect_prompt_injection
       description: ""
-      enable: false
+      enabled: true
     - name: ban_substrings
       description: ""
-      enable: false
+      enabled: true
     - name: detect_secrets
       description: ""
-      enable: false
+      enabled: true
     - name: detect_relevance
       description: ""
-      enable: false
+      enabled: true
     - name: detect_factual_consistency
       description: ""
-      enable: false
+      enabled: true

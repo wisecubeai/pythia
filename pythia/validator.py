@@ -30,7 +30,7 @@ class ValidatorPool():
         if validators is not None:
             for v_conf in validators["validators"]["options"]:
                 validator = Validator(v_conf)
-                if validator.enable:
+                if validator.enabled:
                     print("Adding validator {} to the pool".format(validator.name))
                     self._enabled_validators.append(validator.name)
 
@@ -42,5 +42,5 @@ class ValidatorPool():
 class Validator():
     def __init__(self, config):
         self.name = config["name"]
-        self.enable = config["enable"]
+        self.enabled = config["enabled"]
         self.description = config["description"]
