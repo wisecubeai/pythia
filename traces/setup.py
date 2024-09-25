@@ -1,9 +1,9 @@
-from setuptools import setup, find_packages
+import setuptools
 
-setup(
+setuptools.setup(
     name="pythia-traces",  # This is the package name on PyPI
     version="0.1.0",
-    packages=find_packages(),
+    packages=setuptools.find_packages(where="."),
     install_requires=["openlit==1.22.0"],
     python_requires=">=3.10",
     description="The Pythia Traces package for event tracing",
