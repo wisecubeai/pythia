@@ -61,6 +61,7 @@ services:
       - jaeger
     logging: *logging
     environment:
+      - TZ=UTC
       - ENVOY_PORT
       - HOST_FILESYSTEM
       - OTEL_COLLECTOR_HOST
@@ -113,6 +114,7 @@ services:
     build: .
     container_name: wisecube-pythia
     environment:
+      - TZ=UTC
       - "OPENAI_API_KEY=${OPENAI_API_KEY}"
       - "MODEL_BASE_URL=${MODEL_BASE_URL}"
       - "MODEL_NAME=${MODEL_NAME}"

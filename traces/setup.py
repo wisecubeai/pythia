@@ -1,7 +1,7 @@
 import setuptools
 
 setuptools.setup(
-    name="pythia-traces",  # This is the package name on PyPI
+    name="pythia-traces",
     version="0.1.0",
     package_dir={"pythia": "traces"},
     packages=setuptools.find_packages(where="."),

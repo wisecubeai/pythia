@@ -1,4 +1,5 @@
-from llm_guard.input_scanners.gibberish import Gibberish,MatchType
+from llm_guard.input_scanners.gibberish import Gibberish, MatchType
+
 
 def validate(text):
     try:

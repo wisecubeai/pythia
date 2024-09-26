@@ -1,3 +1,4 @@
+import json
 import os
 
 from fastapi import HTTPException
@@ -144,20 +145,20 @@ async def orpheus_pythia():
 def get_model_metrics():
     service_name = os.getenv("JAEGER_SERVICE_NAME")
     traces = get_traces(service_name)
-    # print(traces)
-    system_message, user_prompt, completion = extract_prompt_and_completion(traces)
-    if system_message is None or user_prompt is None or completion is None:
-        return None
+    for trace_obj in traces:
+        print("Process Trace with id: {}".format(trace_obj["traceID"]))
+        system_message, user_prompt, completion = extract_prompt_and_completion(trace_obj)
+        if system_message is None or user_prompt is None or completion is None:
+            return None
 
-    validators = ValidatorPool().enabled_validators
-    claim = ask_pythia(input_reference=system_message,
-                       input_response=completion,
-                       question=user_prompt,
-                       validators_list=validators)
-    metrics = claim.get('metrics', {})
-    trace_pythia_response(metrics)
-    # print(metrics)
-    return metrics
+        validators = ValidatorPool().enabled_validators
+        claim = ask_pythia(input_reference=system_message,
+                           input_response=completion,
+                           question=user_prompt,
+                           validators_list=validators)
+
+        print(json.dumps(claim))
+        trace_pythia_response(claim)
 
 
 # Update Prometheus metrics with the values from the dictionary
@@ -188,43 +189,35 @@ def trace_pythia_response(pythia_response):
         agent_host_name=JAEGER_HOST,  # Jaeger agent host (default localhost)
         agent_port=int(JAEGER_PORT)  # Jaeger agent port (default 6831)
     )
-
+    tracer_provider = TracerProvider(
+        resource=Resource.create({"service.name": "pythia-service"})
+    )
     # 2. Set the TracerProvider with resource information
-    trace.set_tracer_provider(
-        TracerProvider(
-            resource=Resource.create({"service.name": "pythia-service"})
-        )
-    )
-
-    # 3. Add the exporter to the provider's processor
-    trace.get_tracer_provider().add_span_processor(
-        BatchSpanProcessor(jaeger_exporter)
-    )
-
-    # Optional: Add a console exporter for debugging locally
-    console_exporter = ConsoleSpanExporter()
-    trace.get_tracer_provider().add_span_processor(
-        SimpleSpanProcessor(console_exporter)
-    )
+    trace.set_tracer_provider(tracer_provider)
+    span_processor = BatchSpanProcessor(jaeger_exporter)
+    tracer_provider.add_span_processor(span_processor)
 
     # 4. Get a tracer instance
     tracer = trace.get_tracer(__name__)
 
-    # Assuming `pythia_response` contains the data to be traced
-    data = pythia_response
-    print(data)
-
     # 5. Create a new trace/span and add dictionary values as attributes
     with tracer.start_as_current_span("ask-pythia") as span:
-        for key, value in data.items():
-            print(f"Adding key {key} with value {value}")
+        print("Create new Trace ...")
+        for key, value in pythia_response.get("metrics").items():
             span.set_attribute(key, value)
 
-        # Optional: Setting span status (e.g., OK or ERROR based on conditions)
+        for validator in pythia_response.get("validatorsResults"):
+            try:
+                span.set_attribute("{}.isValid".format(validator["validator"]["name"]),
+                                   validator.get("isValid"))
+                span.set_attribute("{}.riskScore".format(validator["validator"]["name"]),
+                                   validator.get("riskScore"))
+            except Exception as e:
+                pass
+
         span.set_status(Status(status_code=StatusCode.OK))
 
-    # At the end, ensure the traces are exported
-    print("Tracing complete. Check Jaeger UI for results.")
+    print("Tracing complete.")
 
 
 update_metrics_job()

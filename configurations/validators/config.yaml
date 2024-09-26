@@ -1,28 +1,53 @@
 ---
 validators:
-  description: "Model Validators"
+  description: "Validators for for different operations"
   options:
     - name: detect_pii
-      description: ""
+      description: "The Anonymize Scanner acts as your digital guardian, ensuring your user prompts remain confidential and free from sensitive data exposure."
+      source: llm Guard
       enabled: true
-    - name: detect_gibberish
-      description: ""
-      enabled: true
+      input: input_reference
+      output: input_response
     - name: detect_toxicity
-      description: ""
+      description: "This provides a mechanism to analyze and mitigate the toxicity of text content, this tool is instrumental in preventing the dissemination of harmful or offensive content."
+      source: Llm Guard
       enabled: true
-    - name: detect_prompt_injection
-      description: ""
-      enabled: true
-    - name: ban_substrings
-      description: ""
-      enabled: true
-    - name: detect_secrets
-      description: ""
-      enabled: true
+      input: null
+      output: input_response
     - name: detect_relevance
-      description: ""
+      description: "This scanner ensures that output remains relevant and aligned with the given input prompt."
+      source: Llm Guard
       enabled: true
+      input: null
+      output: input_response
     - name: detect_factual_consistency
-      description: ""
+      description: "This scanner is designed to assess if the given content contradicts or refutes a certain statement or prompt. It acts as a tool for ensuring the consistency and correctness of language model outputs, especially in contexts where logical contradictions can be problematic."
+      source: Llm Guard
       enabled: true
+      input: null
+      output: input_response
+    - name: detect_secrets
+      description: "This scanner diligently examines user inputs, ensuring that they don't carry any secrets before they are processed by the language model."
+      source: Llm Guard
+      enabled: true
+      input: null
+      output: input_response
+    - name: detect_gibberish
+      description: "This scanner is designed to identify and filter out gibberish or nonsensical inputs in English language text."
+      source: Llm Guard
+      enabled: true
+      input: null
+      output: input_response
+    - name: detect_prompt_injection
+      description: "Guard against crafty input manipulations targeting LLM,by identifying and mitigating such attempts, it ensures the LLM operates securely without succumbing to injection attacks."
+      source: Llm Guard
+      enabled: true
+      input: null
+      output: null
+    - name: detect_ban_substrings
+      description: "Ensure that specific undesired substrings never make it into your prompts with the BanSubstrings scanner."
+      source: Llm Guard
+      enabled: false
+      input: null
+      output: input_response
+

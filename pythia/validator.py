@@ -32,7 +32,7 @@ class ValidatorPool():
                 validator = Validator(v_conf)
                 if validator.enabled:
                     print("Adding validator {} to the pool".format(validator.name))
-                    self._enabled_validators.append(validator.name)
+                    self._enabled_validators.append(validator.__dict__)
 
     @property
     def enabled_validators(self):
@@ -44,3 +44,6 @@ class Validator():
         self.name = config["name"]
         self.enabled = config["enabled"]
         self.description = config["description"]
+        self.source = config["source"]
+        self.input = config["input"]
+        self.output = config["output"]

@@ -26,10 +26,8 @@ WORKDIR /app
 
 # Copy the requirements to the container
 COPY requirements.txt .
-RUN mkdir -p /root/config
-COPY configurations/validators/config.yaml /root/config
 
-ENV CONFIG_FILE = /root/config/config.yaml
+ENV CONFIG_FILE=/app/configurations/validators/config.yaml
 # Install the required Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 

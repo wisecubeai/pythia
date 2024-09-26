@@ -162,7 +162,7 @@ def call_validators(input_reference, input_response, question=None, validators_l
     validator_class = ValidatorCall()
 
     def call_validator(validator):
-        validator_name = validator
+        validator_name = validator["name"]
         print("Execute Validator {}".format(validator_name))
         try:
             validator_data = call_method(
@@ -234,7 +234,6 @@ def ask_pythia(input_reference, input_response, question=None, validators_list=N
     input_reference = _ensure_list_of_strings_references(input_reference)
     if not isinstance(input_reference, list):
         raise TypeError("Argument [input_reference] must be a list of strings")
-    input_reference = _ensure_list_of_strings_references(input_reference)
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future1 = executor.submit(
             ask_pythia_method, input_reference, input_response, question)
