@@ -1,0 +1,22 @@
+openai
+litellm
+llm-guard
+wisecube
+
+# Downgraded openlit to avoid tiktoken conflict
+openlit==1.22.0  # Should work with tiktoken 0.6.x
+fastapi~=0.114.0
+uvicorn~=0.30.6
+opentelemetry-proto
+protobuf
+prometheus_client
+werkzeug~=3.0.4
+starlette~=0.38.5
+starlette_prometheus
+opentelemetry-sdk
+opentelemetry-exporter-jaeger-thrift==1.21.0
+opentelemetry-exporter-jaeger-proto-grpc==1.21.0
+opentelemetry-exporter-jaeger==1.21.0
+
+# Enforce compatible tiktoken version for all dependencies
+tiktoken==0.7.0

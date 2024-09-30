@@ -56,11 +56,12 @@ services:
       - ./configurations/opentelemetry/otelcol-config.yml:/etc/otelcol-config.yml
     ports:
       - "${OTEL_COLLECTOR_PORT_GRPC}"
-      - "${OTEL_COLLECTOR_PORT_HTTP}"
+      - "${OTEL_COLLECTOR_PORT_HTTP}:${OTEL_COLLECTOR_PORT_HTTP}"
     depends_on:
       - jaeger
     logging: *logging
     environment:
+      - TZ=UTC
       - ENVOY_PORT
       - HOST_FILESYSTEM
       - OTEL_COLLECTOR_HOST
@@ -110,20 +111,29 @@ services:
       - default
 
   pythia-backend:
-    image: public.ecr.aws/u9o1b9m6/wisecube-pythia:latest
+    build: .
     container_name: wisecube-pythia
     environment:
+      - TZ=UTC
       - "OPENAI_API_KEY=${OPENAI_API_KEY}"
       - "MODEL_BASE_URL=${MODEL_BASE_URL}"
+      - "MODEL_NAME=${MODEL_NAME}"
       - "READ_INTERVAL=${READ_INTERVAL}"
       - "JAEGER_HOST=${JAEGER_SERVICE_HOST}"
       - "JAEGER_PORT=${JAEGER_AGENT_PORT}"
+      - "JAEGER_SERVICE_NAME=${JAEGER_SERVICE_NAME}"
+      - "JAEGER_SERVICE_PORT=${JAEGER_SERVICE_PORT}"
     ports:
       - "8008:8008"
     restart: always
 
   pythia-model:
-    build: .
+    build:
+      context: .
+      dockerfile: configurations/model/Dockerfile
+      args:
+        MODEL_URL: "${MODEL_URL}"
+        MODEL_FILE: "${MODEL_FILE}"
     container_name: pythia-model
     ports:
       - 8080:8080
