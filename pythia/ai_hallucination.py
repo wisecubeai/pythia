@@ -28,11 +28,11 @@ import pandas as pd
 api_key = os.getenv("OPENAI_API_KEY", "ollama")
 base_url = os.getenv("MODEL_BASE_URL")
 
-print("OpenAI host {}".format(base_url))
 
 client = OpenAI(api_key=api_key, base_url=base_url)
 wisecube_client = WisecubeClient(os.getenv("API_KEY")).client
 model_name = os.getenv("MODEL_NAME", "gpt-4o")
+print("OpenAI host: {} and model name: {}".format(base_url, model_name))
 
 def get_model_batch_response(prompts, max_new_tokens=500, temperature=0, model=model_name):
     if not prompts or len(prompts) == 0:
@@ -197,24 +197,27 @@ def call_validators(input_reference, input_response, question=None, validators_l
 def ask_pythia_method(input_reference: List[str], input_response, question=None):
     if not isinstance(input_reference, list):
         raise TypeError("Argument [input_reference] must be a list of strings")
+    try:
+        claims = llm_extractor(input_response, question=question)
+        classes = parallel_llm_check(claims, input_reference, question=question)
+        metrics = Counter(classes)
+        metrics.update({label: 0 for label in labels})
+        metrics = {c: n / max(len(classes), 1) for c, n in metrics.items()}
+        metrics["accuracy"] = calc_accuracy(metrics[label_entailment], metrics[label_contradiction])
+        triples = []
+        for claim, clazz in zip(claims, classes):
+            triples.append({
+                "claim": claim,
+                "class": clazz
+            })
 
-    claims = llm_extractor(input_response, question=question)
-    classes = parallel_llm_check(claims, input_reference, question=question)
-    metrics = Counter(classes)
-    metrics.update({label: 0 for label in labels})
-    metrics = {c: n / max(len(classes), 1) for c, n in metrics.items()}
-    metrics["accuracy"] = calc_accuracy(metrics[label_entailment], metrics[label_contradiction])
-    triples = []
-    for claim, clazz in zip(claims, classes):
-        triples.append({
-            "claim": claim,
-            "class": clazz
-        })
-
-    return {
-        "claims": triples,
-        "metrics": metrics
-    }
+        return {
+            "claims": triples,
+            "metrics": metrics
+        }
+    except Exception as e:
+        print("Fail to calculate Metrics {}".format(e))
+    return None
 
 
 def _ensure_list_of_strings_references(variable):

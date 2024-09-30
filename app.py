@@ -143,22 +143,28 @@ async def orpheus_pythia():
 
 
 def get_model_metrics():
-    service_name = os.getenv("JAEGER_SERVICE_NAME")
-    traces = get_traces(service_name)
-    for trace_obj in traces:
-        print("Process Trace with id: {}".format(trace_obj["traceID"]))
-        system_message, user_prompt, completion = extract_prompt_and_completion(trace_obj)
-        if system_message is None or user_prompt is None or completion is None:
-            return None
+        service_name = os.getenv("JAEGER_SERVICE_NAME")
+        traces = get_traces(service_name)
+        for trace_obj in traces:
+            try:
+                print("Process Trace with id: {}".format(trace_obj["traceID"]))
+                system_message, user_prompt, completion = extract_prompt_and_completion(trace_obj)
+                if system_message is None or user_prompt is None or completion is None:
+                    return None
 
-        validators = ValidatorPool().enabled_validators
-        claim = ask_pythia(input_reference=system_message,
-                           input_response=completion,
-                           question=user_prompt,
-                           validators_list=validators)
+                validators = ValidatorPool().enabled_validators
+                claim = ask_pythia(input_reference=system_message,
+                                   input_response=completion,
+                                   question=user_prompt,
+                                   validators_list=validators)
 
-        print(json.dumps(claim))
-        trace_pythia_response(claim)
+                if claim is not None:
+                    trace_pythia_response(claim)
+                else:
+                    print("Pythia result are none trace {} was not process".format(trace_obj["traceID"]))
+            except Exception as e:
+                print("Error Processing Trace {}".format(e))
+
 
 
 # Update Prometheus metrics with the values from the dictionary
@@ -166,15 +172,18 @@ READ_INTERVAL = os.getenv("READ_INTERVAL", "10")
 
 
 def update_metrics_job():
-    print("Read Metrics ....")
-    data = get_model_metrics()
-    if data is not None:
-        # Set the Prometheus metrics with values from the dictionary
-        accuracy_metric.observe(data['accuracy'])
-        entailment_metric.observe(data['entailment'])
-        contradiction_metric.observe(data['contradiction'])
-        neutral_metric.observe(data['neutral'])
-        print("Metrics updated")
+    try:
+        print("Read Metrics ....")
+        data = get_model_metrics()
+        if data is not None:
+            # Set the Prometheus metrics with values from the dictionary
+            accuracy_metric.observe(data['accuracy'])
+            entailment_metric.observe(data['entailment'])
+            contradiction_metric.observe(data['contradiction'])
+            neutral_metric.observe(data['neutral'])
+            print("Metrics updated")
+    except Exception as e:
+        print("Fail to update Metrics {}".format(e))
 
     threading.Timer(int(READ_INTERVAL), update_metrics_job).start()
 

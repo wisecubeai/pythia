@@ -128,7 +128,12 @@ services:
     restart: always
 
   pythia-model:
-    image: public.ecr.aws/u9o1b9m6/pythia-llama:latest
+    build:
+      context: .
+      dockerfile: configurations/model/Dockerfile
+      args:
+        MODEL_URL: "${MODEL_URL}"
+        MODEL_FILE: "${MODEL_FILE}"
     container_name: pythia-model
     ports:
       - 8080:8080
