@@ -93,10 +93,17 @@ def process_validators(text, validatos):
 
 
 def handler(event, context):
+    # Validate 'response'
     if not event["response"] or not isinstance(event["response"], str) or event["response"].strip() == "":
         raise ValueError("The 'response' parameter cannot be empty or null.")
-    if not event["reference"] or not isinstance(event["reference"], str) or event["reference"].strip() == "":
-        raise ValueError("The 'reference' parameter cannot be empty or null.")
+
+    # Validate 'reference'
+    if not event["reference"] or not isinstance(event["reference"], list):
+        raise ValueError("The 'reference' parameter must be a non-empty list.")
+
+    # Check that no element in 'reference' is empty or whitespace
+    if any(not item or not isinstance(item, str) or item.strip() == "" for item in event["reference"]):
+        raise ValueError("The 'reference' list cannot contain empty or whitespace-only strings.")
 
     evaluation_result = evaluator.evaluate_summary(event["response"], event["reference"])
 
