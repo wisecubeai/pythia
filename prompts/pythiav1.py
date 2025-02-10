@@ -1,3 +1,10 @@
+"""
+These prompts are from
+https://arxiv.org/pdf/2405.14486
+REFCHECKER: Reference-based Fine-grained Hallucination Checker and Benchmark for Large Language Models
+by Xiangkun Hu, Dongyu Ru, Lin Qiu, Qipeng Guo, Tianhang Zhang, Yang Xu, Yun Luo, Pengfei Liu, Yue Zhang and Zheng Zhang
+"""
+
 GPT4_TRIPLET_EXTRACTION_PROMPT = \
 """Given an input text, please extract a KG from the text and represent the KG with triples formatted with ("subject", "predicate", "object"), each triplet in a line. Please note that this is an EXTRACTION task, so DO NOT care about whether the content of the candidate answer is factual or not, just extract the triplets from it.
 
@@ -29,7 +36,7 @@ The song "Here Comes the Boom" was originally released by American rock band Nel
 Now generate the KG for the provided input text:
 
 ### Input:
-{input_text}
+{text}
 
 ### KG:
 """
@@ -68,10 +75,10 @@ here is some text about Andre Weiss, how many years was Andre at University of D
 Now generate the KG for the following candidate answer based on the provided question:
 
 ### Question:
-{q}
+{question}
 
 ### Candidate Answer:
-{a}
+{text}
 
 ### KG:
 """
