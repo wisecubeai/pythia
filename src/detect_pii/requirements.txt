@@ -1,0 +1,5 @@
+Flask==3.0.0
+llm-guard==0.3.13
+gunicorn
+werkzeug~=3.0.4
+numpy<2
