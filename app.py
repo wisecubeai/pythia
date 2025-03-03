@@ -1,8 +1,9 @@
 import concurrent
 import multiprocessing
+import os
 
-from strategies.pythiav2 import PythiaV2Evaluator
-from models import HostedModel
+from strategies.pythiav2 import get_pythiav2_strategy
+from _evaluators import LLM, DefaultFields, Evaluation
 import json
 import time
 import boto3
@@ -11,8 +12,8 @@ client = boto3.client(
     'sagemaker-runtime',
     region_name='us-east-2'
 )
-model = HostedModel(model="gpt-4o-mini")
-evaluator = PythiaV2Evaluator(model)
+llm = LLM(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"))
+strategy = get_pythiav2_strategy(llm, verbose=True)
 
 
 def sagemaker_validator_2(text):
@@ -105,10 +106,39 @@ def handler(event, context):
     if any(not item or not isinstance(item, str) or item.strip() == "" for item in event["reference"]):
         raise ValueError("The 'reference' list cannot contain empty or whitespace-only strings.")
 
-    evaluation_result = evaluator.evaluate_summary(event["response"], event["reference"])
+    strategy_input = {
+        DefaultFields.QUESTION: event["question"] if "question" in event else None,
+        DefaultFields.CONTEXT: event["reference"] if "reference" in event else None,
+        DefaultFields.ANSWER: event["response"] if "response" in event else None,
+    }
+    result = strategy(strategy_input)
+    evaluation: Evaluation = result["evaluation"]
 
+    claims_list = []
+    for claim in evaluation.claims.claims:
+        claim_obj = claim.model_dump(by_alias=True)
+        claim_list = {
+            "claim": [
+                claim_obj["claim"]["subject"],
+                claim_obj["claim"]["predicate"],
+                claim_obj["claim"]["object"]
+            ],
+            "category": claim_obj["category"],
+            "reasoning": claim_obj["reasoning"],
+            "class":  claim_obj["category"]
+
+        }
+        claims_list.append(claim_list)
+
+    response = {
+        "claims": claims_list,
+        "metrics": evaluation.metrics,
+        "verdict": evaluation.verdict,
+        "validatorsResults": []
+    }
     if "validators" in event:
         validators_response = process_validators(text=event["response"], validatos=event["validators"])
-        evaluation_result.validatorsResults = validators_response
-    return json.loads(evaluation_result.json(by_alias=True))
+        response["validatorsResults"] = validators_response
+    return response
+
 

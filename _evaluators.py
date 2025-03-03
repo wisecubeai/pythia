@@ -1,349 +1,446 @@
 """
-This module contains the code for the different kinds of AI hallucination evaluation implementations
+This module contains the common elements for the evaluators.
 """
-from abc import ABC, abstractmethod
-from typing import Union, Optional, Dict, List, TypeVar, Generic, Sized, Collection
+import abc
+import json
+import math
+from collections import Counter
+from collections.abc import Iterable
+from enum import Enum
+from typing import Optional, Any, List, Dict, Union, Set, Iterator
 
 import litellm
-from pydantic import BaseModel, Field
+from litellm.types.utils import ModelResponse
+from pydantic import BaseModel, field_validator, Field
+from tqdm import trange
 
-import utils
-from models import HostedModel
+
+class DefaultFields(str, Enum):
+    """
+    This class represents the default field names.
+    """
+    QUESTION = "question"
+    ANSWER = "answer"
+    CONTEXT = "context"
+    SUMMARY = "summary"
+    REFERENCE = "reference"
+    MESSAGES = "messages"
+    RESPONSE = "response"
+    EVALUATION = "evaluation"
+    EXTRACTION = "extraction"
 
 
-############################################
-# Evaluation classes
-############################################
+class Verdict(str, Enum):
+    """
+    This class represents the different verdicts that the evaluations can have.
+    """
+    PASS = "PASS"
+    FAIL = "FAIL"
+    INCOMPLETE = "INCOMPLETE"
+    N_A = "N/A"
+
+
+class ExtractedClaim(BaseModel):
+    """This is the dataclass for an extracted claim"""
+    subject: str
+    predicate: str
+    object: str
+
+    def __str__(self):
+        return f"{self.subject} {self.predicate} {self.object}"
+
+    def __repr__(self):
+        return f"({self.subject}, {self.predicate}, {self.object})"
+
+
+class Extraction(BaseModel, Iterable):
+    """This is the dataclass for a set of claims"""
+    claims: List[ExtractedClaim]
+
+    def __iter__(self) -> Iterator[ExtractedClaim]:
+        return iter(self.claims)
+
+    def __str__(self):
+        return "\n".join([str(claim) for claim in self.claims])
+
+
+class Category(str, Enum):
+    NA = "NA"
+    ENTAILMENT = "entailment"
+    CONTRADICTION = "contradiction"
+    NEUTRAL = "neutral"
+    RELIABLE = "reliable"
 
 
 class SingleClaimEvaluation(BaseModel):
     """This is the dataclass for a single claim evaluation"""
-    claim: List[str] = Field(default_factory=list)
-    category: str = Field(default="N/A")
-    reasoning: Optional[Union[str, List[str]]] = Field(default="")
+    claim: ExtractedClaim
+    category: Category = Category.NA
+    reasoning: Optional[Union[str,List[str]]] = None
+
+
+class CollectionClaimEvaluation(BaseModel):
+    """This is the dataclass for a collection of claim evaluations"""
+    claims: List[SingleClaimEvaluation]
+
+    def __iter__(self) -> Iterator[SingleClaimEvaluation]:
+        return iter(self.claims)
 
 
 class Evaluation(BaseModel):
-    """This is the base class for the evaluation dataclass"""
-    metrics: Dict[str, float] = Field(default_factory=dict)
-    claims: List[SingleClaimEvaluation] = Field(default_factory=list)
-    verdict: str = Field(default="N/A")
-    reasoning: Optional[Union[str, List[str]]] = Field(default="")
+    """This is the dataclass for an evaluation"""
+    metrics: Dict[str, float]
+    verdict: Verdict
+    claims: Optional[CollectionClaimEvaluation] = None
+    reasoning: Optional[str] = None
 
 
-############################################
-# Evaluation classes
-############################################
+def simple_factual_accuracy(claims: List[ExtractedClaim], reference: List[str]) -> Dict[str, float]:
+    """
+    Calculate the factual accuracy of a list of claims against a reference.
+    """
+    correct = 0
+    for claim in claims:
+        if claim in reference:
+            correct += 1
+    return {"accuracy": correct / len(claims)}
 
 
-class SingleClaimEvaluation(BaseModel):
-    class Config:
-        populate_by_name = True  # Allows using 'classType' in input
-        use_enum_values = True
-    """This is the dataclass for a single claim evaluation"""
-    claim: List[str] = Field(default_factory=list)
-    category: str = Field(default="N/A")
-    reasoning: Optional[Union[str, List[str]]] = Field(default="")
-    className: str = Field(alias="class", default="N/A")
+def categorized_factual_accuracy(
+        claim_evaluations: List[SingleClaimEvaluation],
+        included_categories: Set[Category] = frozenset([Category.ENTAILMENT, Category.CONTRADICTION]),
+        penalized_categories: Set[Category] = frozenset([Category.CONTRADICTION]),
+        weights: Optional[Dict[Category, float]] = None,
+        eps: float = 1e-10
+) -> Dict[str, float]:
+    """
+    Calculate the factual accuracy of a list of claim evaluations.
+    """
+    if weights is None:
+        weights = {}
+        for cat in included_categories:
+            weights[cat] = 1.0
+    counts = Counter([c.category for c in claim_evaluations])
+    for cat in included_categories:
+        if cat not in counts:
+            counts[cat] = 0
+    total = max(sum([counts[c] for c in included_categories]), 1)
+    rates: Dict[str, float] = {cat: counts[cat] / total for cat in included_categories}
+    for cat in penalized_categories:
+        rates[cat] = 1 - rates[cat]
+    numerator = sum([weights.get(cat, 1.0) for cat in included_categories])
+    denominator = sum([weights.get(cat, 1.0) / (rates[cat] + eps) for cat in included_categories])
+    return {"accuracy": round(numerator / denominator, ndigits=round(math.log10(1 / eps))-1)}
 
 
+class Task(str, Enum):
+    """
+    This class represents the different tasks that the LLM API can perform.
+    """
+    SUMMARIZATION = "summarization"
+    SUMMARIZATION_W_Q = "summarization_w_q"
+    QA_ZERO_CONTEXT = "qa_zero_context"
+    RAG_QA = "rag_qa"
+
+    @classmethod
+    def determine_task(cls, input_args: Dict[str, Any]) -> "Task":
+        if DefaultFields.QUESTION in input_args and DefaultFields.ANSWER in input_args and DefaultFields.CONTEXT in input_args:
+            return Task.RAG_QA
+        elif DefaultFields.QUESTION in input_args and DefaultFields.ANSWER in input_args:
+            return Task.QA_ZERO_CONTEXT
+        elif DefaultFields.SUMMARY in input_args and DefaultFields.REFERENCE in input_args and DefaultFields.QUESTION in input_args:
+            return Task.SUMMARIZATION_W_Q
+        elif DefaultFields.SUMMARY in input_args and DefaultFields.REFERENCE in input_args:
+            return Task.SUMMARIZATION
+        else:
+            raise ValueError("Invalid task")
+
+    @classmethod
+    def validate_task(cls, input_args: Dict[str, Any], task: "Task") -> bool:
+        if task == Task.RAG_QA:
+            return DefaultFields.QUESTION in input_args and DefaultFields.ANSWER in input_args and DefaultFields.CONTEXT in input_args
+        elif task == Task.QA_ZERO_CONTEXT:
+            return DefaultFields.QUESTION in input_args and DefaultFields.ANSWER in input_args
+        elif task == Task.SUMMARIZATION_W_Q:
+            return DefaultFields.SUMMARY in input_args and DefaultFields.REFERENCE in input_args and DefaultFields.QUESTION in input_args
+        elif task == Task.SUMMARIZATION:
+            return DefaultFields.SUMMARY in input_args and DefaultFields.REFERENCE in input_args
+        else:
+            raise ValueError("Invalid task")
 
 
-class Evaluation(BaseModel):
-    """This is the base class for the evaluation dataclass"""
-    metrics: Dict[str, float] = Field(default_factory=dict)
-    claims: List[SingleClaimEvaluation] = Field(default_factory=list)
-    verdict: str = Field(default="N/A")
-    validatorsResults: List[Dict[str, dict]] = Field(default_factory=list)
+class LLM(BaseModel):
+    """
+    This class is a wrapper for the LLM API.
+    """
+    model: str
+    api_key: Optional[str] = Field(default=None, exclude=True)
+    api_base_url: Optional[str] = Field(default=None, exclude=True)
 
-    class Config:
-        populate_by_name = True
-        use_enum_values = True
-
-
-############################################
-# Base Evaluator classes
-############################################
-
-
-class BaseEvaluator(ABC):
-    """This is the base class for evaluators"""
-
-    @abstractmethod
-    def evaluate_summary(
-            self,
-            summary: str,
-            reference: Union[str, List[str]],
-            question: Optional[str] = None,
-            **kwargs) -> Evaluation:
-        """
-        This method evaluates a generated summary.
-
-        :param summary: The generated text of the summary
-        :param reference: The text or texts be summarized. This can be either a `str` or `List[str]`.
-        :param question: This is an optional question that can be used as a focus of the hallucination evaluation. For
-            example, if this is a summary of a set of patient documents then you can focus the evaluation with the
-            question "What drugs have been prescribed?"
-        :param kwargs: these arguments can be used to provide arguments for functions and methods used to evaluate. For
-            example, if an evaluator uses a call to an LLM, the temperature can be supplied by the kwargs
-        :returns: This method returns an evaluation object
-        """
-        pass
-
-    @abstractmethod
-    def batch_summary(
-            self,
-            summaries: Collection[str],
-            references: Collection[List[str]],
-            questions: Optional[Collection[Optional[str]]] = None,
-            **kwargs) -> List[Evaluation]:
-        """
-        This method evaluates a batch of generated summaries.
-
-        :param summaries: The generated texts of the summaries
-        :param references: The texts summarized.
-        :param questions: These are optional questions that can be used as a focus of the hallucination evaluation. For
-            example, if there is a summary of a set of patient documents then you can focus the evaluation with the
-            question "What drugs have been prescribed?"
-        :param kwargs: these arguments can be used to provide arguments for functions and methods used to evaluate. For
-            example, if an evaluator uses a call to an LLM, the temperature can be supplied by the kwargs
-        :returns: This method returns a list of evaluation objects
-        """
-        pass
-
-    @abstractmethod
-    def evaluate_qa(
-            self,
-            answer: str,
-            question: str,
-            context: Optional[Union[str, List[str]]] = None,
-            **kwargs) -> Evaluation:
-        """
-        This method evaluates an answer from a RAG QA system.
-
-        :param answer: The generated text of the answer
-        :param question: The question posed to the system
-        :param context: The optional text or texts be used as context. This can be either a `str` or `List[str]`. If
-            evaluating the output of a RAG-based QA system, the retrieved text(s) should be passed here.
-        :param kwargs: these arguments can be used to provide arguments for functions and methods used to evaluate. For
-            example, if an evaluator uses a call to an LLM, the temperature can be supplied by the kwargs
-        :returns: This method returns an evaluation object
-        """
-        pass
-
-    @abstractmethod
-    def batch_qa(
-            self,
-            answers: Collection[str],
-            questions: Collection[str],
-            contexts: Optional[Collection[Optional[List[str]]]] = None,
-            **kwargs):
-        """
-        This method evaluates an answer from a RAG QA system.
-
-        :param answers: The generated texts of the answers
-        :param questions: The questions posed to the system
-        :param contexts: The optional texts be used as context. If evaluating the output of a RAG-based QA system, the
-            retrieved text(s) should be passed here.
-        :param kwargs: these arguments can be used to provide arguments for functions and methods used to evaluate. For
-            example, if an evaluator uses a call to an LLM, the temperature can be supplied by the kwargs
-        :returns: This method returns a list of evaluation objects
-        """
-        pass
-
-
-class SimpleEvaluator(BaseEvaluator):
-    @property
-    @abstractmethod
-    def model(self) -> HostedModel:
-        pass
-
-    @abstractmethod
-    def _create_summary_call(
-            self,
-            summary: str,
-            reference: Union[str, List[str]],
-            question: Optional[str] = None) -> List[Dict[str, str]]:
-        """
-        This creates a call to an LLM to evaluate a generated summary.
-
-        :param summary: The generated text of the summary
-        :param reference: The text or texts be summarized. This can be either a `str` or `List[str]`.
-        :param question: This is an optional question that can be used as a focus of the hallucination evaluation. For
-            example, if this is a summary of a set of patient documents then you can focus the evaluation with the
-            question "What drugs have been prescribed?"
-        :returns: This method returns an list of messages for performing the summary evaluation
-        """
-        pass
-
-    @abstractmethod
-    def _create_qa_call(
-            self,
-            answer: str,
-            question: str,
-            context: Optional[Union[str, List[str]]] = None) -> List[Dict[str, str]]:
-        """
-        This creates a call to an LLM to evaluate an answer from a RAG QA system.
-
-        :param answer: The generated text of the answer
-        :param question: The question posed to the system
-        :param context: The optional text or texts be used as context. This can be either a `str` or `List[str]`. If
-            evaluating the output of a RAG-based QA system, the retrieved text(s) should be passed here.
-        :returns: This method returns an list of messages for performing the QA evaluation
-        """
-        pass
-
-    @abstractmethod
-    def _process_summary_response(self, response: str) -> Evaluation:
-        """
-        This method processes the response from a call to the LLM, turning the summary response into an Evaluation
-
-        :param response: the LLM response to be processed
-        :return: the summary Evaluation (SimpleEvaluation)
-        """
-        pass
-
-    @abstractmethod
-    def _process_qa_response(self, response: str) -> Evaluation:
-        """
-        This method processes the response from a call to the LLM, turning the QA response into an Evaluation
-
-        :param response: the LLM response to be processed
-        :return: the summary Evaluation (SimpleEvaluation)
-        """
-        pass
-
-    def evaluate_summary(
-            self,
-            summary: str,
-            reference: Union[str, List[str]],
-            question: Optional[str] = None,
-            **kwargs) -> Evaluation:
-        messages = self._create_summary_call(summary, reference, question)
-        result = litellm.completion(
-            model=self.model.model,
-            api_key=self.model.api_key,
-            api_base=self.model.api_base,
+    def __call__(self, messages: List[Dict[str, str]], **kwargs) -> ModelResponse:
+        return litellm.completion(
+            model=self.model,
+            api_key=self.api_key,
+            api_base=self.api_base_url,
             messages=messages,
             **kwargs
         )
-        evaluation = self._process_summary_response(result.choices[0].message.content)
-        return evaluation
 
-    def batch_summary(
-            self,
-            summaries: Collection[str],
-            references: Collection[List[str]],
-            questions: Optional[Collection[str]] = None,
-            **kwargs) -> List[Evaluation]:
-        assert len(summaries) == len(references)
-        if questions is not None:
-            data = (summaries, ["\n\n".join(rs) for rs in references], questions)
+    def batch(self, messages: List[List[Dict[str, str]]], batch_size: int, verbose=False, **kwargs) -> List[ModelResponse]:
+        results = []
+        if verbose:
+            r = trange(0, len(messages), batch_size)
         else:
-            data = (summaries, references)
-        assert questions is None or len(summaries) == len(questions)
-        list_of_messages = [self._create_summary_call(*elements) for elements in zip(*data)]
-        results = utils.parallel_batch_model_call(list_of_messages, self.model, **kwargs)
-        evaluations = [self._process_summary_response(r) for r in results]
-        return evaluations
-
-    def evaluate_qa(
-            self,
-            answer: str,
-            question: str,
-            context: Optional[Union[str, List[str]]] = None,
-            **kwargs) -> Evaluation:
-        messages = self._create_qa_call(answer, question, context)
-        result = litellm.completion(
-            model=self.model.model,
-            api_key=self.model.api_key,
-            api_base=self.model.api_base,
-            messages=messages,
-            **kwargs
-        )
-        evaluation = self._process_qa_response(result.choices[0].message.content)
-        return evaluation
-
-    def batch_qa(
-            self,
-            answers: Collection[str],
-            questions: Collection[str],
-            contexts: Optional[Collection[List[str]]] = None,
-            **kwargs):
-        assert len(answers) == len(questions)
-        assert contexts is None or len(answers) == len(contexts)
-        if contexts is not None:
-            data = (answers, questions, ["\n\n".join(cs) for cs in contexts])
+            r = range(0, len(messages), batch_size)
+        for i in r:
+            results.extend(litellm.batch_completion(
+                model=self.model,
+                api_key=self.api_key,
+                api_base=self.api_base_url,
+                messages=messages[i:i + batch_size],
+                **kwargs))
         else:
-            data = (answers, questions)
-        list_of_messages = [self._create_qa_call(*elements) for elements in zip(*data)]
-        results = utils.parallel_batch_model_call(list_of_messages, self.model, **kwargs)
-        evaluations = [self._process_qa_response(r) for r in results]
-        return evaluations
+            if verbose:
+                print("Batch completion done. # of results:", len(results))
+        return results
 
 
-class ClaimEvaluator(BaseEvaluator):
-    """This class is for the claim-based evaluators"""
+class EvalStep(BaseModel, abc.ABC):
+    """
+    This class represents a single evaluation step.
+    """
+    description: str
 
-    @abstractmethod
-    def extract(self, text: str, question: Optional[str], **kwargs) -> List[List[str]]:
-        """
-        This method extracts claims from the text.
-
-        :param text: The generated text of the answer
-        :param question: This is an optional question that can be used as a focus of the claim extraction. For example,
-            if this is a patient record then you can focus the extraction with the question "What drugs have been
-            prescribed?"
-        :param kwargs: these arguments can be used to provide arguments for functions and methods used to evaluate. For
-            example, if an evaluator uses a call to an LLM, the temperature can be supplied by the kwargs
-        :returns: This method returns an evaluation object
-        """
+    @property
+    @abc.abstractmethod
+    def input_keys(self) -> List[str]:
         pass
 
     @property
-    @abstractmethod
-    def model(self) -> HostedModel:
+    @abc.abstractmethod
+    def output_keys(self) -> List[str]:
         pass
 
+    @abc.abstractmethod
+    def __call__(self, input_arg: Dict[str, Any]) -> Dict[str, Any]:
+        pass
 
-class RedirectEvaluator(BaseEvaluator):
-    def __init__(self, model: HostedModel, summary_evaluator: BaseEvaluator, qa_evaluator: BaseEvaluator):
-        self.model = model
-        self.summary_evaluator = summary_evaluator
-        self.qa_evaluator = qa_evaluator
+    def batch(self, input_args: List[Dict[str, Any]], batch_size: int) -> List[Dict[str, Any]]:
+        return [self(input_arg) for input_arg in input_args]
 
-    def evaluate_summary(
-            self,
-            summary: str,
-            reference: Union[str, List[str]],
-            question: Optional[str] = None,
-            **kwargs) -> Evaluation:
-        return self.summary_evaluator.evaluate_summary(summary, reference, question, **kwargs)
+class PrepareLLMCall(EvalStep):
+    """
+    This class creates calls to the LLM API.
+    """
+    prompt_template: str
+    template_field_map: Dict[str, str]
+    system_prompt: Optional[str] = None
+    messages_field: str = DefaultFields.MESSAGES
 
-    def batch_summary(
-            self,
-            summaries: Collection[str],
-            references: Collection[List[str]],
-            questions: Optional[Collection[Optional[str]]] = None,
-            **kwargs) -> List[Evaluation]:
-        return self.summary_evaluator.batch_summary(summaries, references, questions, **kwargs)
+    @property
+    def input_keys(self) -> List[str]:
+        return list(self.template_field_map.values())
 
-    def evaluate_qa(
-            self,
-            answer: str,
-            question: str,
-            context: Optional[Union[str, List[str]]] = None,
-            **kwargs) -> Evaluation:
-        return self.qa_evaluator.evaluate_qa(answer, question, context, **kwargs)
+    @property
+    def output_keys(self) -> List[str]:
+        return [self.messages_field]
 
-    def batch_qa(
-            self,
-            answers: Collection[str],
-            questions: Collection[str],
-            contexts: Optional[Collection[Optional[List[str]]]] = None,
-            **kwargs):
-        return self.qa_evaluator.batch_qa(answers, questions, contexts, **kwargs)
+    def __call__(self, input_args: Dict[str, Any]) -> Dict[str, Any]:
+        messages = []
+        if self.system_prompt is not None:
+            messages.append({"role": "system", "content": self.system_prompt})
+        user_message = self.prompt_template.format(**{tmpl_f: input_args[in_f] for in_f, tmpl_f in self.template_field_map.items()})
+        messages.append({"role": "user", "content": user_message})
+        input_args.update({
+            self.messages_field: messages
+        })
+        return input_args
 
 
-__all__ = ["SingleClaimEvaluation", "Evaluation", "BaseEvaluator", "SimpleEvaluator", "ClaimEvaluator",
-           "RedirectEvaluator"]
+class CallLLM(EvalStep):
+    """
+    This class calls the LLM API.
+    """
+    llm: LLM
+    response_format: Optional[Any] = None
+    kwargs: Optional[Dict[str, Any]] = None
+    messages_field: str = DefaultFields.MESSAGES
+    response_field: str = DefaultFields.RESPONSE
+
+    @property
+    def input_keys(self) -> List[str]:
+        return [self.messages_field]
+
+    @property
+    def output_keys(self) -> List[str]:
+        return [self.response_field]
+
+    def __call__(self, input_args: Dict[str, Any]) -> Dict[str, Any]:
+        if self.response_format is not None:
+            response: ModelResponse = self.llm(messages=input_args[self.messages_field],
+                                               response_format=self.response_format, **self.kwargs)
+            response: dict = json.loads(response.choices[0].message.content)
+            response = self.response_format(**response)
+        else:
+            response = self.llm(messages=input_args[self.messages_field], **self.kwargs)
+            response = response.choices[0].message.content
+        input_args.update({
+            self.response_field: response
+        })
+        return input_args
+
+    def batch(self, input_args: List[Dict[str, Any]], batch_size: int) -> List[Dict[str, Any]]:
+        kwargs = dict(**self.kwargs)
+        verbose = "verbose" in kwargs and kwargs["verbose"]
+        if verbose:
+            del kwargs["verbose"]
+        if self.response_format is not None:
+            responses = self.llm.batch(
+                messages=[input_arg[self.messages_field] for input_arg in input_args],
+                batch_size=batch_size,
+                verbose=verbose,
+                response_format=self.response_format,
+                **kwargs
+            )
+            responses = [self.response_format(**json.loads(response.choices[0].message.content)) for response in responses]
+        else:
+            responses = self.llm.batch(
+                messages=[input_arg[self.messages_field] for input_arg in input_args],
+                batch_size=batch_size,
+                verbose=verbose,
+                **kwargs
+            )
+            responses = [response.choices[0].message.content for response in responses]
+        for i, input_arg in enumerate(input_args):
+            input_arg.update({
+                self.response_field: responses[i]
+            })
+        return input_args
+
+
+class EvalChain(BaseModel):
+    """
+    This class represents a chain of evaluation steps.
+    """
+    steps: List[EvalStep]
+
+    def __call__(self, input_arg: Dict[str, Any]) -> Dict[str, Any]:
+        for step in self.steps:
+            input_arg = step(input_arg)
+        return input_arg
+
+    def batch(self, input_args: List[Dict[str, Any]], batch_size: int) -> List[Dict[str, Any]]:
+        for step in self.steps:
+            input_args = step.batch(input_args, batch_size)
+        return input_args
+
+    def __add__(self, other):
+        if isinstance(other, EvalStep):
+            return EvalChain(steps=self.steps + [other])
+        elif isinstance(other, EvalChain):
+            return EvalChain(steps=self.steps + other.steps)
+        else:
+            raise TypeError("unsupported operand type(s) for +: 'EvalChain' and '{}'".format(type(other)))
+
+
+class ChainStep(EvalStep):
+    """
+    This class represents a single step in a chain of evaluation steps.
+    """
+    chain: EvalChain
+
+    @property
+    def input_keys(self) -> List[str]:
+        return self.chain.steps[0].input_keys
+
+    @property
+    def output_keys(self) -> List[str]:
+        return self.chain.steps[-1].output_keys
+
+    def __call__(self, input_arg: Dict[str, Any]) -> Dict[str, Any]:
+        input_arg = self.chain(input_arg)
+        return input_arg
+
+    def batch(self, input_args: List[Dict[str, Any]], batch_size: int) -> List[Dict[str, Any]]:
+        return self.chain.batch(input_args, batch_size)
+
+
+class IteratedStep(EvalStep):
+    """
+    This class represents a single step that is iterated over a list of input arguments.
+    """
+    step: EvalStep
+    iterated_field: str
+    result_field: str
+    batch_size: int = 1
+
+    @property
+    def input_keys(self) -> List[str]:
+        return self.step.input_keys
+
+    @property
+    def output_keys(self) -> List[str]:
+        return self.step.output_keys
+
+    def __call__(self, input_arg: Dict[str, Any]) -> Dict[str, Any]:
+        results = []
+        if self.batch_size == 1:
+            for arg in input_arg[self.iterated_field]:
+                curr = dict(**input_arg)
+                del curr[self.iterated_field]
+                curr[self.iterated_field] = arg
+                results.append(self.step(curr))
+        else:
+            for i in range(0, len(input_arg[self.iterated_field]), self.batch_size):
+                curr = dict(**input_arg)
+                del curr[self.iterated_field]
+                curr[self.iterated_field] = input_arg[self.iterated_field][i:i + self.batch_size]
+                results.extend(self.step.batch([curr], self.batch_size))
+        input_arg.update({self.result_field: [r[self.result_field] for r in  results]})
+        return input_arg
+
+    def batch(self, input_args: List[Dict[str, Any]], batch_size: int) -> List[Dict[str, Any]]:
+        batches = []
+        if self.batch_size == 1:
+            for input_arg in input_args:
+                for arg in input_arg[self.iterated_field]:
+                    curr = dict(**input_arg)
+                    del curr[self.iterated_field]
+                    curr[self.iterated_field] = arg
+                    batches.append(curr)
+        else:
+            for input_arg in input_args:
+                for i in range(0, len(input_arg[self.iterated_field]), self.batch_size):
+                    curr = dict(**input_arg)
+                    del curr[self.iterated_field]
+                    curr[self.iterated_field] = input_arg[self.iterated_field][i:i + self.batch_size]
+                    batches.append(curr)
+        results = self.step.batch(batches, batch_size)
+        for i, input_arg in enumerate(input_args):
+            input_arg.update({self.result_field: [r[self.result_field] for r in results[i::len(input_args)]]})
+        return input_args
+
+
+class Strategy(BaseModel):
+    """
+    This class represents a strategy for evaluating a given set of tasks
+    """
+    name: str
+    description: str
+    task_chains: Dict[Task, EvalChain]
+
+    @field_validator("task_chains", mode="before")
+    def _validate_task_chains(cls, value: Dict[Task, EvalChain]) -> Dict[Task, EvalChain]:
+        if len(value) == 0:
+            raise ValueError("Strategy must have at least one task chain")
+        return value
+
+    def __call__(self, input_arg: Dict[str, Any], task: Optional[Task]=None) -> Dict[str, Any]:
+        if task is None:
+            task = Task.determine_task(input_arg)
+        return self.task_chains[task](input_arg)
+
+    def batch(self, input_args: List[Dict[str, Any]], batch_size: int, task: Optional[Task]=None) -> List[Dict[str, Any]]:
+        if task is None:
+            task = Task.determine_task(input_args[0])
+        return self.task_chains[task].batch(input_args, batch_size)
